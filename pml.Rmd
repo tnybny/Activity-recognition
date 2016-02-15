@@ -1,0 +1,108 @@
+---
+title: "Activity recognition assignment from Practical Machine Learning coursera course"
+author: "tnybny"
+date: "February 14, 2016"
+output: html_document
+---
+
+Always start with clearing workspace of objects and loading required packages.
+```{r}
+# clear workspace
+rm(list = ls(all = T))
+# load required libraries
+require(caret)
+require(randomForest)
+```
+
+Read the data that needs to be analyzed.
+
+```{r}
+training <- read.table("pml-training.csv", header = T, sep = ",")
+testing <- read.table("pml-testing.csv", header = T, sep = ",")
+```
+
+Start preprocessing the data:
+Since testing set doesn't have the same variables as factors as the training set,
+loop through and coerce all corresponding variables in the testing set as factors
+with the same levels as the training set.
+
+```{r}
+for(i in 1:dim(training)[2])
+{
+    if(class(training[, i]) == "factor")
+    {
+        testing[, i] <- factor(testing[, i], levels = levels(training[, i]))
+    }
+}
+```
+
+How I used cross validation:
+Split the training set into training and validation sets in order to obtain an 
+estimate of the out-of-sample error rate.
+
+```{r}
+inTrain <- createDataPartition(y = training$classe, p = 0.6, list = FALSE)
+myTrain <- training[inTrain, ]
+myTest <- training[-inTrain, ]
+```
+
+Remove the variables which have near zero variance as they might not contribute
+to the predictions and just make model building slower. Also remove the ID 
+variable X since it doesn't help in prediction.
+
+```{r}
+nearZeroVar(myTrain)
+myTrain <- myTrain[, -nearZeroVar(myTrain)] 
+myTrain <- myTrain[, -1]
+```
+
+Remove also variables that have high percentage of NAs (>= 60%).
+
+```{r}
+temp <- myTrain 
+for(i in 1:length(myTrain)) { 
+    if(sum(is.na( myTrain[, i]))/nrow(myTrain) >= .6) {
+        for(j in 1:length(temp)) {
+            if(length(grep(names(myTrain[i]), names(temp)[j])) == 1)  {
+                temp <- temp[, -j] 
+            }   
+        } 
+    }
+}
+myTrain = temp
+rm(temp)
+```
+
+Let's see how much we cleaned the data.
+
+```{r}
+dim(training)
+dim(myTrain)
+```
+
+Build a random forest model on the training data. Use random forests because it 
+generally performs very well for most prediction problems.
+
+```{r}
+modRF <- randomForest(classe ~ ., data = myTrain)
+summary(modRF)
+```
+
+My estimate for the out-of-sample error rate:
+Predict using the model built on the validation set to get an estimate of the 
+out-of-sample error rate. ~99% accuracy! great. Could be overfitting, but unlikely since 
+we still have many variables and a lot of data. Either way, we expect the error
+rate to be higher out-of-sample, especially since we haven't penalized model based
+on complexity.
+
+```{r}
+predRF <- predict(modRF, myTest, type = "class")
+confusionMatrix(predRF, myTest$classe)
+```
+
+We're happy with our model so just get predictions on the testing set.
+
+```{r}
+predRFtest <- predict(modRF, testing, type = "class")
+predRFtest
+```
